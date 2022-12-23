@@ -7,7 +7,7 @@ import pygame
 from gym import spaces
 from gym.core import ActType, ObsType, RenderFrame
 
-from ssl_simplified.envs.ssl_data_structures import Terrain, TeamColor, load_divB_configuration, Position
+from ssl_simplified.envs.ssl_data_structures import Terrain, TeamColor, load_divB_configuration
 
 
 class SSL_Environment(gym.Env):
@@ -40,13 +40,13 @@ class SSL_Environment(gym.Env):
             # "do_robot_drible": spaces.Discrete(2) ADD THIS WHEN IMPLEMENTING DRIBLE :D
         }))
 
+        # self.spec.max_episode_steps = 100  # guessing a 'good' value
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
         self.window = None
         self.display_resolution = 0.1
         self.clock = None
-
 
     def step(self, actions: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         # blue_actions = self.blue_player.get_decision(self.terrain)
@@ -112,8 +112,8 @@ class SSL_Environment(gym.Env):
                 "ball_distance_to_yellow_goal":
                     self.terrain.ball.position.distance(self.terrain.goals[TeamColor.YELLOW].center)}
 
-    def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
+    def reset(self):
+        super().reset()
         self.terrain: Terrain = load_divB_configuration()
 
         return self._get_obs(), self._get_info()
