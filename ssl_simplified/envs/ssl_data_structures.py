@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from math import sqrt
 
+import numpy as np
+
 
 class TeamColor(Enum):
     YELLOW = 0
@@ -30,6 +32,12 @@ class Position:
 
     def __str__(self) -> str:
         return f"({round(self.x, 2)}, {round(self.y, 2)})"
+
+    def __iter__(self) -> iter:
+        return iter((self.x, self.y))
+
+    def to_np_array(self) -> np.array:
+        return np.array(list(map(float, self)), dtype=np.float32)
 
     def distance(self, position: Position) -> float:
         return sqrt((position.x - self.x) ** 2 + (position.y - self.y) ** 2)
@@ -186,34 +194,3 @@ class KickTo(Action):
     def execute(self, delta_time: float) -> None:
         if self.ball.position.distance(self.robot.position) < 10:  # required distance to ball to kick
             move_entity(self.ball, self.destination, delta_time)
-
-
-class DecisionMaker:
-    def __init__(self, team_color: TeamColor):
-        self.team_color: TeamColor = team_color
-
-    def get_decision(self, terrain: Terrain) -> list[Action]:
-        return [MoveTo(robot, robot.position + Position(10000, 0)) for robot in terrain.teams[self.team_color].robots]
-
-
-if __name__ == "__main__":
-    terrain: Terrain = load_divB_configuration()
-
-    blue_player = DecisionMaker(TeamColor.BLUE)
-    yellow_player = DecisionMaker(TeamColor.YELLOW)
-
-    delta_time = 1
-
-    while True:
-        blue_actions = blue_player.get_decision(terrain)
-        yellow_actions = yellow_player.get_decision(terrain)
-
-        for b, y in zip(blue_actions, yellow_actions):
-            b.execute(delta_time)
-            y.execute(delta_time)
-
-        terrain.update_game_state()
-
-        print(f"Scores : Blue {terrain.scores[TeamColor.BLUE]}  | Yellow {terrain.scores[TeamColor.YELLOW]}")
-        print(terrain)
-        input("Enter to go to next turn")
