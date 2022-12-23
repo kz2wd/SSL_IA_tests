@@ -2,8 +2,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from enum import Enum
 from math import sqrt
+from typing import OrderedDict, Union
 
 import numpy as np
+
+# WARNING : Robot speed is the distance in mm that a robot can travel during one second
+MAX_ROBOT_SPEED = 1000
+
+BALL_HIT_DISTANCE = 50
 
 
 class TeamColor(Enum):
@@ -52,6 +58,13 @@ class Size:
         self.width: float = width
         self.height: float = height
 
+    def __mul__(self, factor: float):
+        return Size(self.width * factor, self.height * factor)
+
+    def __iter__(self) -> iter:
+        return iter((self.width, self.height))
+
+
     @property
     def center(self) -> Position:
         return Position(self.width / 2, self.height / 2)
@@ -75,11 +88,14 @@ class Terrain:
     def __init__(self, terrain_size: Size, goal_keeper_area: Size, goal_size: Size, blue_team: Team, yellow_team: Team):
         self.size: Size = terrain_size
         self.area: Area = Area(Position(0, 0), terrain_size)
-        self.goal_keeper_areas = {TeamColor.BLUE: Area(Position(0, terrain_size.height - goal_keeper_area.height / 2), goal_keeper_area),
-                                  TeamColor.YELLOW: Area(Position(terrain_size.width - goal_keeper_area.width,
-                                                           terrain_size.height - goal_keeper_area.height / 2), goal_keeper_area)}
-        self.goals: dict[TeamColor: Area] = {TeamColor.BLUE: Area(Position(-1000, terrain_size.height / 2 - goal_size.height / 2), goal_size),
-                                             TeamColor.YELLOW: Area(Position(terrain_size.width, terrain_size.height / 2 - goal_size.height / 2), goal_size)}
+        self.goal_keeper_areas = {
+            TeamColor.BLUE: Area(Position(0, terrain_size.height - goal_keeper_area.height / 2), goal_keeper_area),
+            TeamColor.YELLOW: Area(Position(terrain_size.width - goal_keeper_area.width,
+                                            terrain_size.height - goal_keeper_area.height / 2), goal_keeper_area)}
+        self.goals: dict[TeamColor: Area] = {
+            TeamColor.BLUE: Area(Position(-1000, terrain_size.height / 2 - goal_size.height / 2), goal_size),
+            TeamColor.YELLOW: Area(Position(terrain_size.width, terrain_size.height / 2 - goal_size.height / 2),
+                                   goal_size)}
         self.ball: Ball = Ball(Size(43, 43), terrain_size.center)
         self.teams: dict[TeamColor: Team] = {TeamColor.BLUE: blue_team, TeamColor.YELLOW: yellow_team}
         self.scores: dict[TeamColor: int] = {TeamColor.BLUE: 0, TeamColor.YELLOW: 0}
@@ -122,6 +138,14 @@ class Terrain:
             terrain_str += "-" * (9 * 7) + "\n"
         return terrain_str
 
+    def execute_action(self, action: OrderedDict[str, Union[float, np.array]], player_color: TeamColor, robot_id: int,
+                       delta_time: float):
+        robot: Robot = self.teams[player_color].robots[robot_id]
+        move_entity(robot, action["robot_orientation"][0], action["robot_speed"][0], delta_time)
+
+        if action["do_robot_kick"] and self.ball.position.distance(robot.position) < BALL_HIT_DISTANCE:
+            move_entity(self.ball, action["robot_orientation"][0], action["robot_speed"][0], delta_time)
+
 
 class Team:
     def __init__(self, color: TeamColor, robot_starting_positions: list[Position]):
@@ -154,43 +178,8 @@ def load_divB_configuration() -> Terrain:
     return Terrain(Size(9000, 6000), goal_size, Size(1000, 1000), blue_team, yellow_team)
 
 
-class Action(ABC):
-    def __init__(self, robot: Robot):
-        self.robot: Robot = robot
-
-    @abstractmethod
-    def execute(self, delta_time: float) -> None:
-        pass
-
-
-class Wait(Action):
-
-    def execute(self, delta_time: float) -> None:
-        pass
-
-
-def move_entity(entity: Entity, destination: Position, delta_time: float) -> None:
-    start = entity.position.x, entity.position.y
-    movement_vector: Position = destination - entity.position
-    norm: float = min(1000.0, destination.distance(entity.position))
-    entity.position += movement_vector.get_normalized(norm) * delta_time
-
-
-class MoveTo(Action):
-    def __init__(self, robot: Robot, destination: Position):
-        super().__init__(robot)
-        self.destination: Position = destination
-
-    def execute(self, delta_time: float) -> None:
-        move_entity(self.robot, self.destination, delta_time)
-
-
-class KickTo(Action):
-    def __init__(self, robot: Robot, destination: Position, ball: Ball):
-        super().__init__(robot)
-        self.destination: Position = destination
-        self.ball: Ball = ball
-
-    def execute(self, delta_time: float) -> None:
-        if self.ball.position.distance(self.robot.position) < 10:  # required distance to ball to kick
-            move_entity(self.ball, self.destination, delta_time)
+def move_entity(entity: Entity, orientation_in_degree: float, speed: float, delta_time: float) -> None:
+    rad_angle: float = np.deg2rad(orientation_in_degree)
+    movement_vector: Position = Position(np.cos(rad_angle), np.sin(rad_angle))  # Get normalised vector
+    distance_traveled = MAX_ROBOT_SPEED * speed * delta_time
+    entity.position += movement_vector * distance_traveled

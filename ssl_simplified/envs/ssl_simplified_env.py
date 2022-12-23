@@ -3,35 +3,22 @@ from typing import Optional, Union
 
 import gym
 import numpy as np
+import pygame
 from gym import spaces
 from gym.core import ActType, ObsType, RenderFrame
 
-from ssl_simplified.envs.ssl_data_structures import Terrain, TeamColor, load_divB_configuration, Action, Position, \
-    MoveTo, Wait
-
-
-class DecisionMaker:
-    def __init__(self, team_color: TeamColor):
-        self.team_color: TeamColor = team_color
-
-    def get_decision(self, terrain: Terrain) -> list[Action]:
-        return [MoveTo(robot, robot.position + Position(10000, 0)) for robot in terrain.teams[self.team_color].robots]
-
-
-class WaitingDecisionMaker(DecisionMaker):
-    def get_decision(self, terrain: Terrain) -> list[Action]:
-        return [Wait(robot) for robot in terrain.teams[self.team_color].robots]
+from ssl_simplified.envs.ssl_data_structures import Terrain, TeamColor, load_divB_configuration, Position
 
 
 class SSL_Environment(gym.Env):
-    metadata = {"render_modes": ["human"]}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
-    def __init__(self, enemy_ia: DecisionMaker = WaitingDecisionMaker(TeamColor.YELLOW), render_mode=None,
+    def __init__(self, render_mode=None,
                  delta_time: float = 1):
         self.delta_time = delta_time
         self.terrain: Terrain = load_divB_configuration()
-        self.blue_player = DecisionMaker(TeamColor.BLUE)
-        self.yellow_player = enemy_ia
+        self.blue_player = None  # OUR IA
+        self.yellow_player = None  # Enemy
 
         self.observation_space = spaces.Dict(
             {
@@ -56,18 +43,21 @@ class SSL_Environment(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
-    def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, dict]:
+        self.window = None
+        self.display_resolution = 0.1
+        self.clock = None
+
+
+    def step(self, actions: ActType) -> tuple[ObsType, float, bool, bool, dict]:
         # blue_actions = self.blue_player.get_decision(self.terrain)
 
-        print(action)
-        input()
-        blue_actions = []
+        # yellow_actions = self.yellow_player.get_decision(self.terrain)
+        # Lets simplify by saying that yellow never play
 
-        yellow_actions = self.yellow_player.get_decision(self.terrain)
-
-        for b, y in zip(blue_actions, yellow_actions):
-            b.execute(self.delta_time)
-            y.execute(self.delta_time)
+        for i, action in enumerate(actions):
+            if i > 5:
+                break
+            self.terrain.execute_action(action, TeamColor.BLUE, i, self.delta_time)
 
         self.terrain.update_game_state()
         info = self._get_info()
@@ -78,7 +68,31 @@ class SSL_Environment(gym.Env):
         return self._get_obs(), reward, False, False, info
 
     def render(self) -> Optional[Union[RenderFrame, list[RenderFrame]]]:
-        print(self.terrain)
+        return self._render_frame()
+
+    def _render_frame(self):
+        if self.window is None and self.render_mode == "human":
+            pygame.init()
+            pygame.display.init()
+            self.window = pygame.display.set_mode(tuple(self.terrain.size * self.display_resolution))
+        if self.clock is None and self.render_mode == "human":
+            self.clock = pygame.time.Clock()
+
+        canvas = pygame.Surface(tuple(self.terrain.size * self.display_resolution))
+        canvas.fill((51, 153, 51))
+        # We have our terrain
+        for robot in self.terrain.teams[TeamColor.BLUE].robots:
+            pygame.draw.circle(canvas, (0, 102, 255), tuple(robot.position * self.display_resolution), robot.size.width * self.display_resolution)
+        for robot in self.terrain.teams[TeamColor.YELLOW].robots:
+            pygame.draw.circle(canvas, (255, 255, 0), tuple(robot.position * self.display_resolution), robot.size.width * self.display_resolution)
+        pygame.draw.circle(canvas, (255, 0, 102), tuple(self.terrain.ball.position * self.display_resolution), self.terrain.ball.size.width * self.display_resolution)
+
+        if self.render_mode == "human":
+            self.window.blit(canvas, canvas.get_rect())
+            pygame.event.pump()
+            pygame.display.update()
+
+            self.clock.tick(self.metadata["render_fps"])
 
     def close(self):
         pass
@@ -101,7 +115,5 @@ class SSL_Environment(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.terrain: Terrain = load_divB_configuration()
-        self.blue_player = DecisionMaker(TeamColor.BLUE)
-        self.yellow_player = DecisionMaker(TeamColor.YELLOW)
 
         return self._get_obs(), self._get_info()
