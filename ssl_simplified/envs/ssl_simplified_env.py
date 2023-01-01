@@ -13,22 +13,6 @@ from pettingzoo.utils.env import ParallelEnv
 
 from ssl_simplified.envs.ssl_data_structures import Terrain, TeamColor, load_divB_configuration
 
-BLUE_PLAYER = "blue"
-YELLOW_PLAYER = "yellow"
-PLAYER_COLORS = [BLUE_PLAYER, YELLOW_PLAYER]
-
-
-def get_opponent(player: str):
-    if player == BLUE_PLAYER:
-        return YELLOW_PLAYER
-    return BLUE_PLAYER
-
-
-def player_to_teamColor(player: str) -> TeamColor:
-    if player == BLUE_PLAYER:
-        return TeamColor.BLUE
-    return TeamColor.YELLOW
-
 
 def _robot_action_space():
     return spaces.Dict({
@@ -50,7 +34,7 @@ class SSL_Environment(ParallelEnv):
         self.max_steps = max_steps
         self.current_step = 0
 
-        self.possible_agents = copy(PLAYER_COLORS)  # TROP chiant que les agents doivent être des STR et pas des ANY
+        self.possible_agents = [TeamColor.BLUE, TeamColor.YELLOW]
 
         # self.spec.max_episode_steps = 100  # guessing a 'good' value
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -62,23 +46,23 @@ class SSL_Environment(ParallelEnv):
 
     def step(self, actions: ActType):
 
-        for i, (blue_action, yellow_action) in enumerate(zip(actions[BLUE_PLAYER], actions[YELLOW_PLAYER])):
+        for i, (blue_action, yellow_action) in enumerate(zip(actions[TeamColor.BLUE], actions[TeamColor.YELLOW])):
             self.terrain.execute_action(blue_action, TeamColor.BLUE, i, self.delta_time)
             self.terrain.execute_action(yellow_action, TeamColor.YELLOW, i, self.delta_time)
 
         self.terrain.update_game_state()
         self.current_step += 1
-        observations = {color: self._get_obs(color) for color in PLAYER_COLORS}
-        rewards = {color: self._get_reward(color) for color in PLAYER_COLORS}
-        terminations = {color: False for color in PLAYER_COLORS}
-        truncations = {color: self.max_steps >= self.current_step for color in PLAYER_COLORS}
-        infos = {color: self._get_info(color) for color in PLAYER_COLORS}
+        observations = {color: self._get_obs(color) for color in TeamColor}
+        rewards = {color: self._get_reward(color) for color in TeamColor}
+        terminations = {color: False for color in TeamColor}
+        truncations = {color: self.max_steps >= self.current_step for color in TeamColor}
+        infos = {color: self._get_info(color) for color in TeamColor}
         return observations, rewards, terminations, truncations, infos
 
-    def _get_reward(self, agent: str):
-        return self._get_info(get_opponent(agent))["ball_distance_to_enemy_goal"] \
-        + self.terrain.scores[player_to_teamColor(agent)] * 1000 \
-        - self.terrain.scores[player_to_teamColor(get_opponent(agent))] * 1000
+    def _get_reward(self, agent):
+        return self._get_info(agent.opponent())["ball_distance_to_enemy_goal"] \
+        + self.terrain.scores[agent] * 1000 \
+        - self.terrain.scores[agent.opponent()] * 1000
 
     def render(self) -> Optional[Union[RenderFrame, list[RenderFrame]]]:
         return self._render_frame()
@@ -110,17 +94,17 @@ class SSL_Environment(ParallelEnv):
 
             self.clock.tick(self.metadata["render_fps"])
 
-    def _get_info(self, agent: str):
-        return {"score": self.terrain.scores[player_to_teamColor(agent)],
+    def _get_info(self, agent: TeamColor):
+        return {"score": self.terrain.scores[agent],
                 "ball_distance_to_enemy_goal":
-                    self.terrain.ball.position.distance(self.terrain.goals[player_to_teamColor(get_opponent(agent))].center)}
+                    self.terrain.ball.position.distance(self.terrain.goals[agent.opponent()].center)}
 
-    def _get_obs(self, agent: str):
+    def _get_obs(self, agent: TeamColor):
         return OrderedDict(
             [("Ally_robots_pos", tuple(
-                robot.position.to_np_array() for robot in self.terrain.teams[player_to_teamColor(agent)].robots)),
+                robot.position.to_np_array() for robot in self.terrain.teams[agent].robots)),
              ("Enemy_robots_pos", tuple(
-                 robot.position.to_np_array() for robot in self.terrain.teams[player_to_teamColor(get_opponent(agent))].robots)),
+                 robot.position.to_np_array() for robot in self.terrain.teams[agent.opponent()].robots)),
              ("Ball_pos", self.terrain.ball.position.to_np_array())]
         )
 
@@ -128,7 +112,7 @@ class SSL_Environment(ParallelEnv):
         self.agents = copy(self.possible_agents)
         self.terrain: Terrain = load_divB_configuration()
 
-        return {color: self._get_obs(color) for color in PLAYER_COLORS}
+        return {color: self._get_obs(color) for color in TeamColor}
 
     def _robot_observation_space(self):
         return spaces.Box(np.array([0, 0]), np.array([self.terrain.size.width,
@@ -136,13 +120,13 @@ class SSL_Environment(ParallelEnv):
                           dtype=np.float32)
 
     @functools.lru_cache(maxsize=None)
-    def observation_space(self, agent: str):
+    def observation_space(self, agent: TeamColor):
         return spaces.Dict(
             {
                 "Ally_robots_pos": spaces.Tuple(self._robot_observation_space() for _ in range(
-                    len(self.terrain.teams[player_to_teamColor(agent)].robots))),
+                    len(self.terrain.teams[agent].robots))),
                 "Enemy_robots_pos": spaces.Tuple(self._robot_observation_space() for _ in range(
-                    len(self.terrain.teams[player_to_teamColor(get_opponent(agent))].robots))),
+                    len(self.terrain.teams[agent.opponent()].robots))),
                 "Ball_pos": spaces.Box(np.array([0, 0]), np.array([self.terrain.size.width,
                                                                    self.terrain.size.height]),
                                        dtype=np.float32)
@@ -150,8 +134,8 @@ class SSL_Environment(ParallelEnv):
         )
 
     @functools.lru_cache(maxsize=None)
-    def action_space(self, agent: str):
-        return spaces.Tuple(_robot_action_space() for _ in range(len(self.terrain.teams[player_to_teamColor(agent)].robots)))
+    def action_space(self, agent):
+        return spaces.Tuple(_robot_action_space() for _ in range(len(self.terrain.teams[agent].robots)))
 
 
 from pettingzoo.test import parallel_api_test  # noqa: E402

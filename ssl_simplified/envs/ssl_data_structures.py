@@ -15,6 +15,12 @@ class TeamColor(Enum):
     YELLOW = 0
     BLUE = 1
 
+    @classmethod
+    def opponent(cls) -> TeamColor:
+        if cls == TeamColor.YELLOW:
+            return TeamColor.BLUE
+        return TeamColor.YELLOW
+
 
 class Position:
     def __init__(self, x: float, y: float):
