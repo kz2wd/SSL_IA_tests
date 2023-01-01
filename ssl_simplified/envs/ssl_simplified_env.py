@@ -9,6 +9,7 @@ from gymnasium import spaces
 from gym.core import ActType, RenderFrame
 
 from pettingzoo.utils.env import ParallelEnv
+from pettingzoo.utils import parallel_to_aec, wrappers
 
 from ssl_simplified.envs.ssl_data_structures import Terrain, TeamColor, load_divB_configuration
 
@@ -20,6 +21,35 @@ def _robot_action_space():
         "do_robot_kick": spaces.Discrete(2),
         # "do_robot_drible": spaces.Discrete(2) ADD THIS WHEN IMPLEMENTING DRIBLE :D
     })
+
+
+def env(render_mode=None):
+    """
+    The env function often wraps the environment in wrappers by default.
+    You can find full documentation for these methods
+    elsewhere in the developer documentation.
+    """
+    internal_render_mode = render_mode if render_mode != "ansi" else "human"
+    env = raw_env(render_mode=internal_render_mode)
+    # This wrapper is only for environments which print results to the terminal
+    if render_mode == "ansi":
+        env = wrappers.CaptureStdoutWrapper(env)
+
+    env = wrappers.OrderEnforcingWrapper(env)
+    # Provides a wide vareity of helpful user errors
+    # Strongly recommended
+    env = wrappers.OrderEnforcingWrapper(env)
+    return env
+
+
+def raw_env(render_mode=None):
+    """
+    To support the AEC API, the raw_env() function just uses the from_parallel
+    function to convert from a ParallelEnv to an AEC env
+    """
+    env = SSL_Environment(render_mode=render_mode)
+    env = parallel_to_aec(env)
+    return env
 
 
 class SSL_Environment(ParallelEnv):
