@@ -3,11 +3,10 @@ from collections import OrderedDict
 from copy import copy
 from typing import Optional, Union
 
-import gym
 import numpy as np
 import pygame
 from gymnasium import spaces
-from gym.core import ActType, ObsType, RenderFrame
+from gym.core import ActType, RenderFrame
 
 from pettingzoo.utils.env import ParallelEnv
 
@@ -56,6 +55,8 @@ class SSL_Environment(ParallelEnv):
         rewards = {color: self._get_reward(color) for color in TeamColor}
         terminations = {color: False for color in TeamColor}
         truncations = {color: self.max_steps >= self.current_step for color in TeamColor}
+        if any(truncations):
+            self.agents = []
         infos = {color: self._get_info(color) for color in TeamColor}
         return observations, rewards, terminations, truncations, infos
 
